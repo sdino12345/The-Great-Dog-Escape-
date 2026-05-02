@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Dog Escape </title>
+
+<style>
+body { margin:0; overflow:hidden; font-family:Arial; }
+canvas { display:block; background:#d8d2c2; }
+
+#ui {
+position:absolute;
+top:10px; left:10px;
+color:black;
+font-size:18px;
+font-weight:bold;
+}
+
+.screen{
+position:absolute;
+width:100%;height:100%;
+background:rgba(0,0,0,0.85);
+color:white;
+display:flex;
+flex-direction:column;
+justify-content:center;
+align-items:center;
+z-index:10;
+}
+
+button{
+padding:10px 20px;
+margin:10px;
+font-size:18px;
+cursor:pointer;
+}
+
+#factPanel{
+position:absolute;
+width:100%;height:100%;
+background:rgba(0,0,0,0.9);
+color:white;
+display:none;
+justify-content:center;
+align-items:center;
+flex-direction:column;
+text-align:center;
+}
+</style>
+</head>
+
+<body>
+
+<div id="startScreen" class="screen">
+<h1>🐶 Dog Escape</h1>
+<button onclick="startGame()">Play</button>
+</div>
+
+<div id="endScreen" class="screen" style="display:none;">
+<h1>You Collected All Dogs! 🏆</h1>
+<button onclick="location.reload()">Play Again</button>
+</div>
+
+<div id="factPanel">
+<h2 id="breedTitle"></h2>
+<p id="factText"></p>
+<button onclick="resumeGame()">Next ▶</button>
+</div>
+
+<div id="ui"></div>
+
+<canvas id="gameCanvas"></canvas>
+
+<script>
+const canvas=document.getElementById("gameCanvas");
+const ctx=canvas.getContext("2d");
+
+canvas.width=innerWidth;
+canvas.height=innerHeight;
+
+/* GAME STATE */
+let running=false;
+let paused=false;
+let level=1;
+let lives=3;
+let bonesCollected=0;
+
+/* PLAYER */
+let dog={x:200,y:300,frame:0};
+
+/* ENEMIES */
+let owners=[];
+let bones=[];
+
+/* DATA */
+let breeds=["Labrador","Husky","Golden Retriever","German Shepherd","Beagle","Bulldog","Poodle","Rottweiler","Dachshund","Shih Tzu"];
+
+let facts=[
+"Labradors are famous for their gentle nature and are trusted to guide blind people safely through busy environments. They have an incredibly soft mouth, which allows them to carry fragile objects without damaging them. Originally bred as fishing dogs, they would retrieve nets and ropes from icy waters. Today, they are one of the most popular dogs in the world because of their intelligence and kindness. Some Labradors are even trained to assist with medical conditions and daily tasks.",
+
+"Huskies are built for endurance and can run over 100 miles in freezing temperatures without stopping. Their thick double coat protects them from extreme Arctic winds that would be deadly to most animals. They were originally used by indigenous people to pull sleds across vast snowy landscapes. Huskies are known for their striking blue or multicolored eyes, which give them a unique appearance. Despite their strength, they are playful and love being part of a pack.",
+
+"Golden Retrievers are known for their incredible ability to sense human emotions and provide comfort. They are often used as therapy dogs in hospitals, helping patients feel calm and supported. Originally bred for retrieving game during hunts, they have a natural instinct to carry and return objects. Their friendly personality makes them one of the best family dogs in the world. Some Golden Retrievers can even detect anxiety or stress before humans notice it themselves.",
+
+"German Shepherds are highly intelligent working dogs often used in police and military operations. They are trained to follow complex commands and can track scents over long distances with precision. Some elite units even train them to parachute out of planes alongside their handlers. Originally bred for herding sheep, they quickly became known for their versatility and loyalty. Their courage and discipline make them one of the most respected dog breeds in the world.",
+
+"Beagles have one of the most powerful noses in the animal kingdom, capable of detecting scents that humans would never notice. Because of this, they are often used in airports to find prohibited food and items. They were originally bred for hunting in packs, which is why they are very social and energetic. Once they pick up a scent, they will follow it with intense focus and determination. Their curious nature means they are always exploring their surroundings.",
+
+"Bulldogs may look calm today, but they were originally bred for the dangerous sport of bull-baiting. Over time, they were bred to be more gentle and became affectionate companions. They are known for their strong build, wrinkled faces, and stubborn personalities. Despite their tough appearance, they are very loyal and love being around people. Bulldogs are now considered one of the most relaxed and friendly dog breeds.",
+
+"Poodles are considered one of the smartest dog breeds and can learn new commands very quickly. They were originally bred as water retrievers, helping hunters collect items from lakes and rivers. Their curly coats are not just for looks—they also help protect them from cold water. Poodles come in different sizes, including standard, miniature, and toy varieties. Their intelligence and elegance make them stand out among other breeds.",
+
+"Rottweilers were used by ancient Roman soldiers to guard camps and herd livestock during long journeys. They are incredibly strong and confident, making them excellent guard dogs. Despite their intimidating appearance, they are very affectionate with their families. Rottweilers are known for their loyalty and protective instincts. With proper training, they can be both gentle companions and powerful protectors.",
+
+"Dachshunds were specially bred to hunt animals that live underground, such as badgers. Their long bodies and short legs allow them to dig into tunnels and chase prey. They are surprisingly brave and will confront animals much larger than themselves. Despite their small size, they have big personalities and lots of energy. Dachshunds are known for being both playful and stubborn.",
+
+"Shih Tzus were once kept exclusively by Chinese royalty and lived luxurious lives inside palaces. They were so valuable that they were never sold, only given as special gifts. Their long, flowing coats and proud posture made them symbols of status and elegance. Even today, they carry themselves with a confident and noble attitude. Shih Tzus are affectionate companions who enjoy being the center of attention."
+];
+
+let remaining=[...Array(breeds.length).keys()];
+
+/* CONTROLS */
+let keys={};
+document.addEventListener("keydown",e=>keys[e.key.toLowerCase()]=true);
+document.addEventListener("keyup",e=>keys[e.key.toLowerCase()]=false);
+
+/* START */
+function startGame(){
+document.getElementById("startScreen").style.display="none";
+running=true;
+spawnLevel();
+loop();
+}
+
+function spawnLevel(){
+owners=[];
+for(let i=0;i<level;i++){
+owners.push({
+x:Math.random()*canvas.width,
+y:Math.random()*canvas.height,
+speed:2+level*0.3
+});
+}
+}
+
+/* BONES */
+setInterval(()=>{
+if(running && !paused && bones.length<5 && remaining.length>0){
+let rand=Math.floor(Math.random()*remaining.length);
+let index=remaining[rand];
+
+bones.push({
+x:Math.random()*canvas.width,
+y:Math.random()*canvas.height,
+index:index
+});
+}
+},1500);
+
+/* MOVE */
+function moveDog(){
+if(paused)return;
+
+let speed=keys["shift"]?7:4;
+
+if(keys["w"]) dog.y-=speed;
+if(keys["s"]) dog.y+=speed;
+if(keys["a"]) dog.x-=speed;
+if(keys["d"]) dog.x+=speed;
+
+dog.x=Math.max(0,Math.min(canvas.width,dog.x));
+dog.y=Math.max(0,Math.min(canvas.height,dog.y));
+
+dog.frame+=0.2;
+}
+
+function moveOwners(){
+if(paused)return;
+
+owners.forEach(o=>{
+let dx=dog.x-o.x;
+let dy=dog.y-o.y;
+let dist=Math.sqrt(dx*dx+dy*dy)||1;
+
+o.x+=(dx/dist)*o.speed;
+o.y+=(dy/dist)*o.speed;
+});
+}
+
+/* 🐶 BETTER DOG MODEL */
+function drawDog(){
+let x=dog.x;
+let y=dog.y;
+let f=Math.sin(dog.frame)*4;
+
+/* body */
+ctx.fillStyle="#c47a2c";
+ctx.beginPath();
+ctx.ellipse(x,y,30,18,0,0,Math.PI*2);
+ctx.fill();
+
+/* head */
+ctx.beginPath();
+ctx.arc(x+28,y-10,14,0,Math.PI*2);
+ctx.fill();
+
+/* ears */
+ctx.fillStyle="#8b4a1f";
+ctx.beginPath();
+ctx.arc(x+20,y-22+f,6,0,Math.PI*2);
+ctx.arc(x+36,y-22-f,6,0,Math.PI*2);
+ctx.fill();
+
+/* legs */
+ctx.fillStyle="#5a2e0f";
+ctx.fillRect(x-15,y+15,5,10);
+ctx.fillRect(x+5,y+15,5,10);
+
+/* tail */
+ctx.strokeStyle="#5a2e0f";
+ctx.lineWidth=4;
+ctx.beginPath();
+ctx.moveTo(x-30,y);
+ctx.lineTo(x-40,y+f*2);
+ctx.stroke();
+
+/* eye */
+ctx.fillStyle="black";
+ctx.fillRect(x+32,y-12,3,3);
+}
+
+/* OWNER */
+function drawOwners(){
+owners.forEach(o=>{
+ctx.fillStyle="black";
+ctx.fillRect(o.x-5,o.y-15,10,20);
+ctx.beginPath();
+ctx.arc(o.x,o.y-25,6,0,Math.PI*2);
+ctx.fill();
+});
+}
+
+/* BONE */
+function drawBone(b){
+ctx.fillStyle="white";
+ctx.beginPath();
+ctx.arc(b.x-5,b.y,4,0,Math.PI*2);
+ctx.arc(b.x+5,b.y,4,0,Math.PI*2);
+ctx.fill();
+ctx.fillRect(b.x-5,b.y-3,10,6);
+}
+
+/* HIT */
+function hit(a,b){
+return Math.hypot(a.x-b.x,a.y-b.y)<25;
+}
+
+/* FACT */
+function showFact(index){
+paused=true;
+document.getElementById("breedTitle").innerText="🐕 "+breeds[index];
+document.getElementById("factText").innerText=facts[index];
+document.getElementById("factPanel").style.display="flex";
+}
+
+function resumeGame(){
+paused=false;
+document.getElementById("factPanel").style.display="none";
+}
+
+/* LOOP */
+function loop(){
+if(!running)return;
+
+ctx.clearRect(0,0,canvas.width,canvas.height);
+
+/* clean grid */
+ctx.strokeStyle="#cfc7b5";
+for(let i=0;i<canvas.width;i+=60){
+ctx.beginPath();ctx.moveTo(i,0);ctx.lineTo(i,canvas.height);ctx.stroke();
+}
+for(let i=0;i<canvas.height;i+=60){
+ctx.beginPath();ctx.moveTo(0,i);ctx.lineTo(canvas.width,i);ctx.stroke();
+}
+
+moveDog();
+moveOwners();
+
+drawDog();
+drawOwners();
+
+/* bones */
+bones.forEach((b,i)=>{
+drawBone(b);
+
+if(!paused && hit(dog,b)){
+bonesCollected++;
+remaining=remaining.filter(x=>x!==b.index);
+
+showFact(b.index);
+bones.splice(i,1);
+
+if(bonesCollected % 3 === 0){
+level++;
+spawnLevel();
+}
+}
+});
+
+/* enemies */
+owners.forEach(o=>{
+if(!paused && hit(dog,o)){
+lives--;
+dog.x=200;
+dog.y=300;
+
+if(lives<=0){
+alert("Game Over!");
+location.reload();
+}
+}
+});
+
+/* win */
+if(remaining.length===0){
+document.getElementById("endScreen").style.display="flex";
+return;
+}
+
+/* UI */
+document.getElementById("ui").innerText=
+`Bones: ${bonesCollected} | Lives: ${lives} | Level: ${level}`;
+
+requestAnimationFrame(loop);
+}
+</script>
+
+</body>
+</html>
